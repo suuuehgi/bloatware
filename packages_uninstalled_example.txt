@@ -1,0 +1,11 @@
+138,com.facebook.services
+220,com.facebook.katana
+235,com.facebook.system
+312,com.facebook.appmanager
+46,com.whatsapp
+68,com.microsoft.office.excel
+84,com.microsoft.skydrive
+167,com.microsoft.office.word
+176,com.microsoft.office.powerpoint
+116,com.instagram.android
+4,com.skype.raider
