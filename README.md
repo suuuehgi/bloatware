@@ -7,7 +7,7 @@ The script therefore creates two plain text files to keep track of the changes.
 ## Dependency
 
 * `adb` (`adb shell` has to work)
-* `sed`
+* `sed`, `python3`
 
 ## Example
 
