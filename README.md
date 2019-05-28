@@ -1,4 +1,4 @@
-# Remove bloatware
+# Remove Android Bloatware
 
 Wrapper script around `adb shell cmd package`.
 Packages are being disabled for the current user from userspace (without root) and can easily be enabled again.
