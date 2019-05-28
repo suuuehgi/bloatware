@@ -16,5 +16,5 @@ The script therefore creates two plain text files to keep track of the changes.
 ./packman.py uninstall com.whatsapp
 ./packman.py uninstall -p 68 84 167 176
 ./packman.py reinstall -p 68 84 167 176
-./packman.py list --regexp 'packman(?!\.)'
+./packman.py list --regexp 'samsung(?!\.)'
 ```
