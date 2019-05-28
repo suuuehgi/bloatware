@@ -1,7 +1,10 @@
 #!/usr/bin/env python3
 # coding: utf-8
 
-import argparse, os, re, subprocess
+import argparse, os, re, subprocess, sys
+from urllib.error import HTTPError
+import urllib.request as urllib2
+from bs4 import BeautifulSoup
 
 parser = argparse.ArgumentParser(description='Handle apps')
 
@@ -13,6 +16,8 @@ sp_list.add_argument('-f','--filter',   help='Filter by string', type=str, defau
 sp_list.add_argument('-r','--regexp',   help='Filter by regular expression', type=str, default=None, required=False)
 sp_list.add_argument('--flatten',       help="Print findings as string of numbers", action='store_true')
 sp_list.add_argument('--uninstall',     help="Uninstall findings", action='store_true')
+sp_list.add_argument('--identify',      help="Try to identify package using PlayStore after --filter and --regexp", action='store_true')
+sp_list.add_argument('--identifyfirst', help="Try to identify package using PlayStore before --filter and --regexp (might take long)", action='store_true')
 
 sp_uninstall = sp.add_parser('uninstall', help='Uninstall packages')
 sp_uninstall.add_argument('-p','--packages', help='Uninstall packages (numbers or package names)', nargs='+', default=None, required=True)
@@ -24,6 +29,23 @@ args = parser.parse_args()
 
 filename = os.path.normpath( os.getcwd() + '/' + 'packages_initial.txt' )
 filename_uninstalled = os.path.normpath( os.getcwd() + '/' + 'packages_uninstalled.txt' )
+
+def progress(count, total, status=''):
+    # https://gist.github.com/vladignatyev/06860ec2040cb497f0f3
+    bar_len = 60
+    filled_len = int(round(bar_len * count / float(total)))
+
+    percents = round(100.0 * count / float(total), 1)
+    bar = '=' * filled_len + '-' * (bar_len - filled_len)
+
+    sys.stdout.write('[%s] %s%s ...%s\r' % (bar, percents, '%', status))
+    sys.stdout.flush()
+
+def connection_test():
+    connection = subprocess.Popen('adb shell exit', shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    connection.communicate()
+    if connection.returncode == 0: return True
+    else: return False
 
 def get_packages(what):
     """Read installed packages from phone or uninstalled from file"""
@@ -68,6 +90,19 @@ def find_package(package, packages):
     if len(hits) == 1: return hits[0]
     else: raise RuntimeError("Package {} not found!".format(package))
 
+def identify_package(package):
+    try:
+        req = urllib2.Request( 'https://play.google.com/store/apps/details?id={}'.format(package) )
+        html = urllib2.urlopen(req).read().decode()
+    except HTTPError:
+        return "Not in PlayStore"
+    span = re.findall('<\\s*h1[^>]*>(.*?)<\\s*/\\s*h1>', html)
+    if not span == []:
+        name = BeautifulSoup( span[0], "lxml" ).find('span').text
+        return name
+    else:
+        return "Not identifiable"
+
 def uninstall_list(packages):
     for p in packages:
         print( 'Uninstalling: {}'.format(p[1]) )
@@ -80,19 +115,37 @@ def uninstall_list(packages):
 uninstall = lambda package: subprocess.Popen( 'adb shell pm uninstall -k --user 0 {}'.format(package), shell=True, stdout=subprocess.PIPE ).stdout.readlines()
 reinstall = lambda package: subprocess.Popen( 'adb shell cmd package install-existing {}'.format(package), shell=True, stdout=subprocess.PIPE ).stdout.readlines()
 
+if connection_test() is False:
+    print('Could not connect to phone. Make sure "adb shell" is working')
+    sys.exit(1)
+
 if not os.path.exists(filename): init_packages(filename)
 packages = read_packages(filename)
 
 if args.command == 'list':
+
     packages_new = list(zip( *get_packages(args.type) ))[1]
+
     # Assign original numbers
-    packages = [ p for p in packages if p[1] in packages_new ]
-    if not args.filter is None: packages = [ p for p in packages if args.filter.lower() in p[1].lower() ]
-    if not args.regexp is None: packages = [ p for p in packages if bool(re.search(args.regexp, p[1])) is True ]
+    packages = [ ( p[0], p[1], '' ) for p in packages if p[1] in packages_new ]
+
+    # --identifyfirst
+    if args.identifyfirst is True: packages = [ ( p[0], p[1], identify_package(p[1]) ) for ppp,p in enumerate(packages) if not progress(ppp, len(packages), 'Identifying packages') ]
+    # --filter
+    if not args.filter is None: packages = [ p for p in packages if args.filter.lower() in p[1].lower() or args.filter.lower() in p[2].lower() ]
+    # --regexp
+    if not args.regexp is None: packages = [ p for p in packages if bool(re.search(args.regexp, p[1])) is True or bool(re.search(args.regexp, p[2])) is True ]
+    # --identify
+    if args.identify is True and args.identifyfirst is False: packages = [ ( p[0], p[1], identify_package(p[1]) ) for ppp,p in enumerate(packages) if not progress(ppp, len(packages), 'Identifying packages') ]
+    print()
+    # --flatten
     if args.flatten is True:
         if not packages == []: print( " ".join( list(zip(*packages))[0] ) )
     else:
-        for ppp, p in packages: print('{:>5}: {}'.format(ppp, p))
+        for ppp, p, pname in packages:
+            if pname == '': print('{:>5}: {}'.format(ppp, p, pname))
+            else: print('{:>5}: {:<40} ({})'.format(ppp, p, pname))
+    # --uninstall
     if args.uninstall is True: uninstall_list(packages)
 
 elif args.command == 'uninstall':
